@@ -65,7 +65,7 @@ const initialScoringLine: ScoringLineState = {
 };
 
 export default function App() {
-  const [language, setLanguage] = useState<Language>('vi');
+  const [language, setLanguage] = useState<Language>('en');
   const [isCvReady, setIsCvReady] = useState<boolean>(false);
   const [currentImage, setCurrentImage] = useState<AppImage | null>(null);
   const [activeTool, setActiveTool] = useState<ActiveTool>(ActiveTool.PanZoom);
@@ -163,7 +163,11 @@ export default function App() {
     });
 
     setActivePresetForPreview(null);
-    showFeedback(translations[language].customImageSuccess, 'success');
+    const presetName = preset.id === 'target-10-touch' ? translations[language].preset1Name : preset.id === 'target-10-miss' ? translations[language].preset2Name : preset.id === 'target-10-torn' ? translations[language].preset3Name : preset.name;
+    const msg = translations[language].presetLoadedSuccess
+      .replace('{name}', presetName)
+      .replace('{ppm}', preset.pixelsPerMm.toFixed(1));
+    showFeedback(msg, 'success');
   };
 
   // Custom user image upload handler
