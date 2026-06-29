@@ -108,7 +108,7 @@ export default function ResultPanel({
   const handleExportReport = () => {
     const srcCanvas = document.getElementById('vsc-interactive-canvas') as HTMLCanvasElement;
     if (!srcCanvas) {
-      alert(translations[language].exportError);
+      console.error(translations[language].exportError);
       return;
     }
 

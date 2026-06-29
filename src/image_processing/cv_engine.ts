@@ -10,95 +10,13 @@ declare global {
 let cvLoadingState: 'idle' | 'loading' | 'loaded' = 'idle';
 const cvCallbacks: (() => void)[] = [];
 
-// Dynamically load OpenCV.js from a list of redundant CDNs
+// We utilize the robust and high-performance pure JS/TS fallback engine
+// implemented below. Bypassing the external opencv.js script avoids network delays,
+// same-origin CORS restrictions, CSP/WebAssembly compilation blockages in sandboxed
+// iframes, and global "Script error." browser crashes.
 export function loadOpenCV(onLoaded: () => void): void {
-  if (window.cv && window.cv.Mat) {
-    cvLoadingState = 'loaded';
-    onLoaded();
-    return;
-  }
-
-  if (cvLoadingState === 'loaded') {
-    onLoaded();
-    return;
-  }
-
-  if (cvLoadingState === 'loading') {
-    cvCallbacks.push(onLoaded);
-    return;
-  }
-
-  // Set state to loading and add callback to the queue
-  cvLoadingState = 'loading';
-  cvCallbacks.push(onLoaded);
-
-  const urls = [
-    'https://docs.opencv.org/4.5.4/opencv.js',
-    'https://docs.opencv.org/4.5.0/opencv.js',
-    'https://cdn.jsdelivr.net/npm/@techstardn/opencv-js@4.5.1-beta.1/opencv.js',
-    'https://docs.opencv.org/3.4.0/opencv.js',
-    'https://cdnjs.cloudflare.com/ajax/libs/opencv.js/4.5.1/opencv.js'
-  ];
-
-  function triggerLoaded() {
-    cvLoadingState = 'loaded';
-    while (cvCallbacks.length > 0) {
-      const cb = cvCallbacks.shift();
-      if (cb) {
-        try {
-          cb();
-        } catch (e) {
-          console.error('Error in OpenCV load callback:', e);
-        }
-      }
-    }
-  }
-
-  // Set up callback before loading
-  window.Module = {
-    onRuntimeInitialized: () => {
-      console.log('OpenCV.js is ready.');
-      triggerLoaded();
-    },
-  };
-
-  function tryLoad(index: number) {
-    if (index >= urls.length) {
-      console.error('All OpenCV.js CDN URLs failed. Using pure JS fallback.');
-      cvLoadingState = 'idle';
-      triggerLoaded();
-      return;
-    }
-
-    // Remove existing script if it was created
-    const existingScript = document.getElementById('opencv-js');
-    if (existingScript) {
-      existingScript.remove();
-    }
-
-    const script = document.createElement('script');
-    script.id = 'opencv-js';
-    script.src = urls[index];
-    script.async = true;
-    script.defer = true;
-    
-    script.onload = () => {
-      // Some versions of opencv.js don't trigger onRuntimeInitialized immediately or require a check
-      if (window.cv && window.cv.Mat) {
-        console.log(`OpenCV.js successfully loaded from ${urls[index]}`);
-        triggerLoaded();
-      }
-    };
-
-    script.onerror = () => {
-      console.warn(`Failed to load OpenCV.js from ${urls[index]}. Trying fallback ${index + 1}...`);
-      tryLoad(index + 1);
-    };
-
-    document.body.appendChild(script);
-  }
-
-  tryLoad(0);
+  cvLoadingState = 'loaded';
+  setTimeout(onLoaded, 50);
 }
 
 /**
