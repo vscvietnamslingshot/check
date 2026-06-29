@@ -1,0 +1,21 @@
+name: vsc_var_check
+description: Official Video Assistant Referee (VAR) scoring system for the Vietnam Slingshot Championship (VSC).
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  image: ^4.1.3 # Pure Dart image processing library for fallbacks
+  file_picker: ^8.0.0 # To upload target pictures
+  provider: ^6.1.1 # Simple state management
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true

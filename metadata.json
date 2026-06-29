@@ -1,0 +1,8 @@
+{
+  "name": "VSC VAR Check",
+  "description": "Official Vietnam Slingshot Championship (VSC) Video Assistant Referee scoring system. Uses high-precision Computer Vision and Geometric Mathematics to resolve target scoring disputes.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
