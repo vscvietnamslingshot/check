@@ -1,3 +1,4 @@
+import React, { useEffect } from 'react';
 import { CheckCircle2, XCircle, Scale, Compass, ChevronRight, RefreshCw, AlertTriangle, Download } from 'lucide-react';
 import { CalibrationState, BulletState, ScoringLineState } from '../types';
 import { Language, translations } from '../utils/translations';
@@ -9,6 +10,7 @@ interface ResultPanelProps {
   scoringLine: ScoringLineState;
   onReset: () => void;
   language: Language;
+  exportReportRef?: React.MutableRefObject<(() => void) | null>;
 }
 
 export default function ResultPanel({
@@ -17,6 +19,7 @@ export default function ResultPanel({
   scoringLine,
   onReset,
   language,
+  exportReportRef,
 }: ResultPanelProps) {
   const isCalibrated = calibration.isValid && calibration.pixelsPerMillimeter > 0 && calibration.isLocked;
   const hasBullet = bullet.center !== null;
@@ -34,7 +37,7 @@ export default function ResultPanel({
   let deltaMm = 0;
   let isInside = false;
 
-  if (isCalibrated && hasBullet) {
+  if (isCalibrated && hasBullet && (scoringLine.boundaryRadiusPixels > 0 || isCurveActive)) {
     varRadiusPx = varRadiusMm * calibration.pixelsPerMillimeter;
 
     if (isCurveActive) {
@@ -43,37 +46,15 @@ export default function ResultPanel({
       distancePx = getMinimumDistanceToSpline(bullet.center!, splinePoints);
       distanceMm = distancePx / calibration.pixelsPerMillimeter;
 
-      // Find the closest point on the spline to the bullet center to determine inside/outside
-      let closestSplinePt = splinePoints[0];
-      let minD = Math.hypot(bullet.center!.x - splinePoints[0].x, bullet.center!.y - splinePoints[0].y);
-      for (const sPt of splinePoints) {
-        const d = Math.hypot(bullet.center!.x - sPt.x, bullet.center!.y - sPt.y);
-        if (d < minD) {
-          minD = d;
-          closestSplinePt = sPt;
-        }
-      }
-
-      // Compare distance of bullet center to target center (scoringLine.center)
-      // and distance of closestSplinePt to target center
-      const bulletDistToCenter = Math.hypot(bullet.center!.x - scoringLine.center.x, bullet.center!.y - scoringLine.center.y);
-      const curveDistToCenter = Math.hypot(closestSplinePt.x - scoringLine.center.x, closestSplinePt.y - scoringLine.center.y);
-
-      isInside = bulletDistToCenter <= curveDistToCenter;
-
-      if (isInside) {
+      // Purely check if the 3mm diameter VAR circle (radius varRadiusPx) touches or overlaps the curve
+      if (distancePx <= varRadiusPx) {
         result = 'HIGHER SCORE';
-        // Overlap delta: since center is inside, overlap is varRadius + distance to boundary
-        deltaPx = varRadiusPx + distancePx;
       } else {
-        // Outside
-        if (distancePx <= varRadiusPx) {
-          result = 'HIGHER SCORE';
-        } else {
-          result = 'LOWER SCORE';
-        }
-        deltaPx = varRadiusPx - distancePx;
+        result = 'LOWER SCORE';
       }
+      
+      // Calculate deltaPx: positive overlap when touching, negative clearance when missed
+      deltaPx = varRadiusPx - distancePx;
       deltaMm = deltaPx / calibration.pixelsPerMillimeter;
     } else {
       boundaryMm = scoringLine.boundaryRadiusPixels / calibration.pixelsPerMillimeter;
@@ -104,6 +85,17 @@ export default function ResultPanel({
   const scoreLvl = scoringLine.selectedRingScore;
   const higherScore = scoreLvl;
   const lowerScore = scoreLvl - 1;
+
+  useEffect(() => {
+    if (exportReportRef) {
+      exportReportRef.current = handleExportReport;
+    }
+    return () => {
+      if (exportReportRef) {
+        exportReportRef.current = null;
+      }
+    };
+  }, [exportReportRef, calibration, bullet, scoringLine, language, result]);
 
   const handleExportReport = () => {
     const srcCanvas = document.getElementById('vsc-interactive-canvas') as HTMLCanvasElement;
@@ -347,17 +339,10 @@ export default function ResultPanel({
             <p className="text-[9px] text-[#666] font-mono mt-2 leading-relaxed text-center px-1">
               {isCurveActive ? (
                 result === 'HIGHER SCORE' ? (
-                  isInside ? (
-                    <span>
-                      [PASS] {translations[language].proofInside}. {translations[language].proofOverlap}:{' '}
-                      <span className="text-green-400 font-bold">+{deltaMm.toFixed(3)}mm</span>.
-                    </span>
-                  ) : (
-                    <span>
-                      [PASS] {translations[language].proofDistance} ({distanceMm.toFixed(3)}mm) &le; VAR Rad (1.500mm). {translations[language].proofOverlap}:{' '}
-                      <span className="text-green-400 font-bold">+{deltaMm.toFixed(3)}mm</span>.
-                    </span>
-                  )
+                  <span>
+                    [PASS] {translations[language].proofDistance} ({distanceMm.toFixed(3)}mm) &le; VAR Rad (1.500mm). {translations[language].proofOverlap}:{' '}
+                    <span className="text-green-400 font-bold">+{deltaMm.toFixed(3)}mm</span>.
+                  </span>
                 ) : (
                   <span>
                     [FAIL] {translations[language].proofDistance} ({distanceMm.toFixed(3)}mm) &gt; VAR Rad (1.500mm). {translations[language].proofDelta}:{' '}
@@ -381,7 +366,7 @@ export default function ResultPanel({
               onClick={handleExportReport}
               className="mt-4 w-full bg-[#2A2B2E] hover:bg-[#333] active:bg-[#202124] border border-[#444] hover:border-[#F27D26] text-[#E4E3E0] hover:text-white font-mono text-[10px] font-bold py-2.5 px-3 rounded uppercase tracking-wider transition-all flex items-center justify-center space-x-2 cursor-pointer shadow-lg"
             >
-              <Download className="w-3.5 h-3.5 text-[#F27D26]" />
+              <Download className={`w-3.5 h-3.5 ${result === 'HIGHER SCORE' ? 'text-[#10b981]' : 'text-[#ef4444]'}`} />
               <span>{translations[language].exportImage}</span>
             </button>
           </div>

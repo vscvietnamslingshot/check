@@ -123,7 +123,7 @@ export default function SidebarControls({
   };
 
   return (
-    <div className="bg-[#151619] border-r border-[#333] text-[#E4E3E0] w-80 flex flex-col h-[calc(100vh-56px)] select-none" id="vsc-sidebar">
+    <div className="bg-[#151619] border-r border-[#333] text-[#E4E3E0] w-full lg:w-80 flex flex-col h-full select-none" id="vsc-sidebar">
       {/* Current overall step indicator */}
       <div className="p-4 border-b border-[#333] space-y-1 bg-[#121315]">
         <p className="text-[10px] text-[#666] font-mono uppercase tracking-widest">{translations[language].workflowState}</p>
@@ -161,51 +161,7 @@ export default function SidebarControls({
             )}
           </div>
 
-          {/* Sample Target Presets */}
-          <div className="space-y-1.5">
-            <span className="text-[9px] font-mono uppercase tracking-wider text-[#666] font-semibold block">
-              {translations[language].officialVscTargets}
-            </span>
-            {presets.map((preset) => {
-              let presetName = preset.name;
-              let presetDesc = preset.description;
-              if (preset.id === 'target-10-touch') {
-                presetName = translations[language].preset1Name;
-                presetDesc = translations[language].preset1Desc;
-              } else if (preset.id === 'target-10-miss') {
-                presetName = translations[language].preset2Name;
-                presetDesc = translations[language].preset2Desc;
-              } else if (preset.id === 'target-10-torn') {
-                presetName = translations[language].preset3Name;
-                presetDesc = translations[language].preset3Desc;
-              }
 
-              return (
-                <button
-                  key={preset.id}
-                  onClick={() => onPresetSelected(preset)}
-                  className={`w-full text-left p-2 rounded border transition-all flex items-center justify-between group cursor-pointer ${
-                    currentImage?.name.includes(preset.name)
-                      ? 'bg-[#2A2B2E] border-[#F27D26] text-[#F27D26]'
-                      : 'bg-[#1A1B1E] border-[#333] hover:border-[#444] hover:bg-[#202125] text-[#888]'
-                  }`}
-                  title={presetDesc}
-                >
-                  <div className="truncate pr-2">
-                    <div className="font-mono text-[10px] font-bold truncate text-[#E4E3E0] group-hover:text-white">
-                      {presetName}
-                    </div>
-                    <div className="text-[8px] font-mono text-[#666] group-hover:text-[#888] truncate mt-0.5">
-                      {preset.expectedResult === 'HIGHER SCORE' ? translations[language].resolvedHigher : translations[language].resolvedLower} ({preset.pixelsPerMm} px/mm)
-                    </div>
-                  </div>
-                  <span className="text-[8px] font-mono px-1 py-0.5 rounded bg-[#2A2B2E] border border-[#333] shrink-0 text-[#888] group-hover:text-[#E4E3E0]">
-                    {translations[language].select}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
 
           <div className="relative py-1">
             <div className="absolute inset-0 flex items-center" aria-hidden="true">
@@ -314,8 +270,13 @@ export default function SidebarControls({
                       // Lock scale
                       setActiveTool(ActiveTool.PanZoom);
                     } else {
-                      // Unlock scale
+                      // Unlock scale -> auto-lock other tools!
                       setActiveTool(ActiveTool.Calibrate);
+                      setBullet((b) => ({ ...b, isLocked: true }));
+                      setScoringLine((s) => ({
+                        ...s,
+                        curve: s.curve ? { ...s.curve, isLocked: true } : undefined,
+                      }));
                     }
                     return { ...prev, isLocked: nextLocked };
                   });
@@ -423,15 +384,20 @@ export default function SidebarControls({
                   setBullet((prev) => {
                     const nextLocked = !prev.isLocked;
                     if (nextLocked) {
-                      if (activeTool === ActiveTool.BulletPoints || activeTool === ActiveTool.AdjustBullet) {
-                        setActiveTool(ActiveTool.PanZoom);
-                      }
+                      setActiveTool(ActiveTool.PanZoom);
+                    } else {
+                      // Unlock bullet -> auto-lock other tools!
+                      setActiveTool(ActiveTool.BulletPoints);
+                      setCalibration((c) => ({ ...c, isLocked: true }));
+                      setScoringLine((s) => ({
+                        ...s,
+                        curve: s.curve ? { ...s.curve, isLocked: true } : undefined,
+                      }));
                     }
                     return { ...prev, isLocked: nextLocked };
                   });
                 }}
-                disabled={!bullet.center}
-                className={`w-full font-mono text-[10px] font-bold py-2 px-4 rounded uppercase tracking-wider transition-all flex items-center justify-center space-x-2 border cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
+                className={`w-full font-mono text-[10px] font-bold py-2 px-4 rounded uppercase tracking-wider transition-all flex items-center justify-center space-x-2 border cursor-pointer ${
                   bullet.isLocked
                     ? 'bg-red-950/50 hover:bg-red-900/50 border-red-500 text-red-400'
                     : 'bg-red-500 hover:bg-red-400 text-black border-transparent shadow-[0_0_10px_rgba(239,68,68,0.2)]'
@@ -584,7 +550,7 @@ export default function SidebarControls({
           <div className="bg-[#0E0F11] border border-[#2A2B2E] rounded p-3 space-y-3">
             <button
               onClick={() => setActiveTool(ActiveTool.CurveFinder)}
-              disabled={!calibration.isLocked}
+              disabled={!calibration.isLocked || !!scoringLine.curve?.isLocked}
               className={`w-full py-2.5 px-3 rounded border font-mono text-[10px] font-bold transition-all flex items-center justify-center space-x-2 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
                 activeTool === ActiveTool.CurveFinder
                   ? 'bg-green-500 border-transparent text-black shadow-[0_0_15px_rgba(16,185,129,0.4)] font-extrabold'
@@ -601,16 +567,29 @@ export default function SidebarControls({
             {currentImage && (
               <button
                 onClick={() => {
-                  setScoringLine((prev) => ({
-                    ...prev,
-                    curve: {
-                      ...prev.curve!,
-                      isLocked: !prev.curve?.isLocked,
-                    },
-                  }));
+                  setScoringLine((prev) => {
+                    const nextLocked = !prev.curve?.isLocked;
+                    if (nextLocked) {
+                      setActiveTool(ActiveTool.PanZoom);
+                    } else {
+                      // Unlock curve -> auto-lock other tools!
+                      setActiveTool(ActiveTool.CurveFinder);
+                      setCalibration((c) => ({ ...c, isLocked: true }));
+                      setBullet((b) => ({ ...b, isLocked: true }));
+                    }
+                    return {
+                      ...prev,
+                      curve: prev.curve ? {
+                        ...prev.curve,
+                        isLocked: nextLocked,
+                      } : {
+                        points: [],
+                        isLocked: nextLocked,
+                      },
+                    };
+                  });
                 }}
-                disabled={!scoringLine.curve || scoringLine.curve.points.length < 3}
-                className={`w-full font-mono text-[10px] font-bold py-2 px-4 rounded uppercase tracking-wider transition-all flex items-center justify-center space-x-2 border cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
+                className={`w-full font-mono text-[10px] font-bold py-2 px-4 rounded uppercase tracking-wider transition-all flex items-center justify-center space-x-2 border cursor-pointer ${
                   scoringLine.curve?.isLocked
                     ? 'bg-green-950/50 hover:bg-green-900/50 border-green-500 text-green-400'
                     : 'bg-green-500 hover:bg-green-400 text-black border-transparent shadow-[0_0_10px_rgba(16,185,129,0.2)]'

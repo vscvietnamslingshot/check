@@ -10,6 +10,9 @@ export const translations = {
     opencvPending: 'OPENCV.JS: PENDING',
     rulesHandbook: 'RULES HANDBOOK',
     rulesHandbookTooltip: 'VSC Scoring Rules Summary',
+    canvasTab: '🎯 CANVAS',
+    controlsTab: '⚙️ CONTROLS',
+    resultsTab: '📊 RESULTS',
 
     // SidebarControls General
     workflowState: 'Workflow State',
@@ -25,7 +28,7 @@ export const translations = {
     targetSelection: 'Target Selection',
     loaded: 'LOADED',
     select: 'SELECT',
-    officialVscTargets: 'Official VSC Targets',
+    officialVscTargets: 'VSC Scoring Sample Targets',
     manualSourcing: 'Manual Sourcing',
     uploadDisputed: 'Upload Disputed Target',
     rotateTooltip: 'Rotate 90° Clockwise',
@@ -201,6 +204,9 @@ export const translations = {
     opencvPending: 'OPENCV.JS: ĐANG TẢI',
     rulesHandbook: 'LUẬT CHẤM ĐIỂM',
     rulesHandbookTooltip: 'Tóm tắt Luật Chấm điểm VAR VSC',
+    canvasTab: '🎯 VÙNG XỬ LÝ',
+    controlsTab: '⚙️ CÔNG CỤ',
+    resultsTab: '📊 KẾT QUẢ',
 
     // SidebarControls General
     workflowState: 'Trạng thái Quy trình',
@@ -216,7 +222,7 @@ export const translations = {
     targetSelection: 'Chọn Bia Chấm Điểm',
     loaded: 'ĐÃ TẢI',
     select: 'CHỌN BIA',
-    officialVscTargets: 'Bia VSC Chính thức',
+    officialVscTargets: 'Bia mẫu VSC chấm điểm',
     manualSourcing: 'Tải Ảnh Thủ Công',
     uploadDisputed: 'Tải Ảnh Bia Tranh Chấp',
     rotateTooltip: 'Xoay 90° Theo Chiều Kim Đồng Hồ',

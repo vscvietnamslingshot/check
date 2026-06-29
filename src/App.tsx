@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Header from './components/Header';
 import SidebarControls from './components/SidebarControls';
 import WorkspaceCanvas from './components/WorkspaceCanvas';
@@ -9,13 +9,30 @@ import { SamplePreset, presets, generateTargetImage } from './utils/canvas_gener
 import { HelpCircle, Info, Target, X } from 'lucide-react';
 import { Language, translations } from './utils/translations';
 
+const modalTranslations = {
+  vi: {
+    modalTitle: "XEM TRƯỚC BIA MẪU VSC CHÍNH THỨC",
+    expectedResult: "KẾT QUẢ DỰ KIẾN",
+    reasoning: "LÝ DO PHÂN TÍCH",
+    standardScale: "TỶ LỆ CHUẨN",
+    closeBtn: "ĐÓNG CỬA SỔ",
+  },
+  en: {
+    modalTitle: "OFFICIAL VSC SAMPLE TARGET PREVIEW",
+    expectedResult: "EXPECTED RESULT",
+    reasoning: "ANALYSIS REASON",
+    standardScale: "STANDARD SCALE",
+    closeBtn: "CLOSE PREVIEW",
+  }
+};
+
 const initialCalibration: CalibrationState = {
-  pixelsPerMillimeter: 8.5, // default starting scale (8.5 px/mm)
+  pixelsPerMillimeter: 25.0, // default starting scale (25.0 px/mm - larger and clearer)
   caliperA: { x: 150, y: 680 },
   caliperB: { x: 235, y: 680 }, 
   spanMm: 10,
   isValid: true, // Always valid/available for Workflow 2.0
-  referenceCircleCenter: { x: 300, y: 680 },
+  referenceCircleCenter: { x: 400, y: 550 },
   isLocked: false,
 };
 
@@ -54,11 +71,24 @@ export default function App() {
   const [activeTool, setActiveTool] = useState<ActiveTool>(ActiveTool.PanZoom);
   const [rotation, setRotation] = useState<number>(0);
   const [showRulesModal, setShowRulesModal] = useState<boolean>(false);
+  const [activePresetForPreview, setActivePresetForPreview] = useState<SamplePreset | null>(null);
 
   // Calibration, Bullet, and Scoring States
   const [calibration, setCalibration] = useState<CalibrationState>(initialCalibration);
   const [bullet, setBullet] = useState<BulletState>(initialBullet);
   const [scoringLine, setScoringLine] = useState<ScoringLineState>(initialScoringLine);
+
+  const exportReportRef = useRef<(() => void) | null>(null);
+
+  // Mobile View Tab state ('canvas' | 'controls' | 'results')
+  const [mobileView, setMobileView] = useState<'canvas' | 'controls' | 'results'>('canvas');
+
+  // Auto switch mobile tab to Canvas when an interactive tool is selected
+  useEffect(() => {
+    if (activeTool !== ActiveTool.None && activeTool !== ActiveTool.PanZoom) {
+      setMobileView('canvas');
+    }
+  }, [activeTool]);
 
   // Toast/Feedback state for process info
   const [feedback, setFeedback] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
@@ -82,92 +112,58 @@ export default function App() {
   }, [isCvReady, language, hasShownCvFeedback]);
 
   // Helper to show brief feedback notifications
-  const showFeedback = (message: string, type: 'success' | 'info' | 'error' = 'info') => {
+  function showFeedback(message: string, type: 'success' | 'info' | 'error' = 'info') {
     setFeedback({ message, type });
     setTimeout(() => {
       setFeedback(null);
     }, 4000);
-  };
+  }
 
-  // Select Preset Target and pre-load ROI locations for instant satisfaction
-  const handlePresetSelected = (preset: SamplePreset) => {
+  // Select Preset Target to display in modal popup
+  function handlePresetSelected(preset: SamplePreset) {
+    setActivePresetForPreview(preset);
+  }
+
+  // Load Preset directly into the analysis workspace
+  const handleLoadPreset = (preset: SamplePreset) => {
     const url = preset.generateUrl();
     const img: AppImage = {
       name: preset.name,
-      url,
+      url: url,
       width: 800,
       height: 800,
       rotation: 0,
     };
-
     setCurrentImage(img);
     setRotation(0);
     setActiveTool(ActiveTool.PanZoom);
 
-    // Auto load approximate caliper overlays for rapid testing
-    const calculatedPpm = preset.pixelsPerMm;
-    const initialCaliperA = { x: 150, y: 680 };
-    const initialCaliperB = { x: 150 + calculatedPpm * 10, y: 680 };
-
     setCalibration({
-      pixelsPerMillimeter: calculatedPpm,
-      caliperA: initialCaliperA,
-      caliperB: initialCaliperB,
+      pixelsPerMillimeter: preset.pixelsPerMm,
+      caliperA: { x: 150, y: 680 },
+      caliperB: { x: 235, y: 680 },
       spanMm: 10,
-      isValid: true,
       referenceCircleCenter: { x: 300, y: 680 },
+      isValid: true,
       isLocked: false,
     });
-
-    // Preset Bullet ROI & Scoring ROI boxes so users don't have to draw them from scratch to test
-    const targetRingCenter = preset.ringCenter;
-    const bulletCenter = preset.bulletCenter;
 
     setBullet({
-      center: null,
-      detectedCenter: null,
-      roi: {
-        x: bulletCenter.x - 45,
-        y: bulletCenter.y - 45,
-        width: 90,
-        height: 90,
-      },
-      contour: [],
-      convexHull: [],
-      holeRadiusPixels: 10,
-      isCustomCenter: false,
-      manualPoints: [],
+      ...initialBullet,
+      center: preset.bulletCenter,
+      detectedCenter: preset.bulletCenter,
       isLocked: false,
     });
 
-    // Standard scoring ring (10 ring has center line at 15mm radius. Outer edge is 15.4mm)
-    const outerEdgePx = (15.0 + 0.4) * calculatedPpm;
-
     setScoringLine({
-      center: targetRingCenter,
-      selectedRingScore: 10,
-      boundaryRadiusPixels: outerEdgePx,
+      ...initialScoringLine,
+      center: preset.ringCenter,
       isCustomBoundary: false,
-      roi: {
-        x: targetRingCenter.x - 170,
-        y: targetRingCenter.y - 170,
-        width: 340,
-        height: 340,
-      },
-      curve: initialScoringLine.curve,
+      boundaryRadiusPixels: 15 * preset.pixelsPerMm,
     });
 
-    let displayName = preset.name;
-    if (preset.id === 'target-10-touch') displayName = translations[language].preset1Name;
-    else if (preset.id === 'target-10-miss') displayName = translations[language].preset2Name;
-    else if (preset.id === 'target-10-torn') displayName = translations[language].preset3Name;
-
-    showFeedback(
-      translations[language].presetLoadedSuccess
-        .replace('{name}', displayName)
-        .replace('{ppm}', calculatedPpm.toString()),
-      'success'
-    );
+    setActivePresetForPreview(null);
+    showFeedback(translations[language].customImageSuccess, 'success');
   };
 
   // Custom user image upload handler
@@ -179,10 +175,10 @@ export default function App() {
     // Clear previous analysis state
     setCalibration({
       ...initialCalibration,
-      pixelsPerMillimeter: 8.5, // default starting scale
+      pixelsPerMillimeter: 25.0, // default starting scale (larger scale for ease of use)
       caliperA: { x: Math.round(img.width * 0.2), y: Math.round(img.height * 0.85) },
       caliperB: { x: Math.round(img.width * 0.35), y: Math.round(img.height * 0.85) },
-      referenceCircleCenter: { x: Math.round(img.width * 0.4), y: Math.round(img.height * 0.85) },
+      referenceCircleCenter: { x: Math.round(img.width * 0.5), y: Math.round(img.height * 0.7) }, // center-lower visible position
       isValid: true,
       isLocked: false,
     });
@@ -193,6 +189,7 @@ export default function App() {
     });
 
     showFeedback(translations[language].customImageSuccess, 'info');
+    setMobileView('canvas');
   };
 
   // Perform Ruler Auto CV analysis
@@ -338,53 +335,95 @@ export default function App() {
         setLanguage={setLanguage}
       />
 
+      {/* Mobile Web Tab Navigation */}
+      <div className="flex lg:hidden bg-[#151619] border-b border-[#333] font-mono text-[11px] font-bold z-10" id="vsc-mobile-tabs">
+        <button
+          onClick={() => setMobileView('controls')}
+          className={`flex-1 py-3 text-center transition-all ${
+            mobileView === 'controls'
+              ? 'text-[#F27D26] border-b-2 border-[#F27D26] bg-[#1F2023]'
+              : 'text-[#888] hover:text-[#fff] hover:bg-[#1A1B1E]'
+          }`}
+        >
+          {translations[language].controlsTab}
+        </button>
+        <button
+          onClick={() => setMobileView('canvas')}
+          className={`flex-1 py-3 text-center transition-all ${
+            mobileView === 'canvas'
+              ? 'text-white border-b-2 border-white bg-[#1F2023]'
+              : 'text-[#888] hover:text-[#fff] hover:bg-[#1A1B1E]'
+          }`}
+        >
+          {translations[language].canvasTab}
+        </button>
+        <button
+          onClick={() => setMobileView('results')}
+          className={`flex-1 py-3 text-center transition-all ${
+            mobileView === 'results'
+              ? 'text-[#F27D26] border-b-2 border-[#F27D26] bg-[#1F2023]'
+              : 'text-[#888] hover:text-[#fff] hover:bg-[#1A1B1E]'
+          }`}
+        >
+          {translations[language].resultsTab}
+        </button>
+      </div>
+
       {/* Main App Content Layout */}
-      <main className="flex flex-1 overflow-hidden relative bg-[#0F1012]" id="vsc-main-layout">
+      <main className="flex flex-col lg:flex-row flex-1 overflow-hidden relative bg-[#0F1012]" id="vsc-main-layout">
         {/* Sidebar Controls Panel */}
-        <SidebarControls
-          activeTool={activeTool}
-          setActiveTool={setActiveTool}
-          calibration={calibration}
-          setCalibration={setCalibration}
-          bullet={bullet}
-          setBullet={setBullet}
-          scoringLine={scoringLine}
-          setScoringLine={setScoringLine}
-          currentImage={currentImage}
-          onImageSelected={handleImageSelected}
-          onPresetSelected={handlePresetSelected}
-          rotation={rotation}
-          setRotation={setRotation}
-          isCvReady={isCvReady}
-          onAutoCalibrateRuler={handleAutoCalibrateRuler}
-          onAutoDetectBullet={handleAutoDetectBullet}
-          onAutoFitScoringLine={handleAutoFitScoringLine}
-          language={language}
-        />
+        <div className={`${mobileView === 'controls' ? 'block w-full' : 'hidden'} lg:block lg:w-80 lg:flex-shrink-0 h-full`}>
+          <SidebarControls
+            activeTool={activeTool}
+            setActiveTool={setActiveTool}
+            calibration={calibration}
+            setCalibration={setCalibration}
+            bullet={bullet}
+            setBullet={setBullet}
+            scoringLine={scoringLine}
+            setScoringLine={setScoringLine}
+            currentImage={currentImage}
+            onImageSelected={handleImageSelected}
+            onPresetSelected={handlePresetSelected}
+            rotation={rotation}
+            setRotation={setRotation}
+            isCvReady={isCvReady}
+            onAutoCalibrateRuler={handleAutoCalibrateRuler}
+            onAutoDetectBullet={handleAutoDetectBullet}
+            onAutoFitScoringLine={handleAutoFitScoringLine}
+            language={language}
+          />
+        </div>
 
         {/* Workspace interactive Canvas drawing area */}
-        <WorkspaceCanvas
-          currentImage={currentImage}
-          activeTool={activeTool}
-          setActiveTool={setActiveTool}
-          calibration={calibration}
-          setCalibration={setCalibration}
-          bullet={bullet}
-          setBullet={setBullet}
-          scoringLine={scoringLine}
-          setScoringLine={setScoringLine}
-          rotation={rotation}
-          language={language}
-        />
+        <div className={`${mobileView === 'canvas' ? 'block flex-1 h-full' : 'hidden'} lg:block lg:flex-1 lg:h-full`}>
+          <WorkspaceCanvas
+            currentImage={currentImage}
+            activeTool={activeTool}
+            setActiveTool={setActiveTool}
+            calibration={calibration}
+            setCalibration={setCalibration}
+            bullet={bullet}
+            setBullet={setBullet}
+            scoringLine={scoringLine}
+            setScoringLine={setScoringLine}
+            rotation={rotation}
+            language={language}
+            onImageSelected={handleImageSelected}
+            onReset={handleReset}
+            exportReportRef={exportReportRef}
+          />
+        </div>
 
         {/* Right Score Verification panel */}
-        <section className="w-80 border-l border-[#333] bg-[#151619] p-4 overflow-y-auto custom-scrollbar h-[calc(100vh-56px)]" id="vsc-results-section">
+        <section className={`${mobileView === 'results' ? 'block w-full' : 'hidden'} lg:block lg:w-80 lg:flex-shrink-0 border-l lg:border-[#333] bg-[#151619] p-4 overflow-y-auto custom-scrollbar h-full lg:h-[calc(100vh-56px)]`} id="vsc-results-section">
           <ResultPanel
             calibration={calibration}
             bullet={bullet}
             scoringLine={scoringLine}
             onReset={handleReset}
             language={language}
+            exportReportRef={exportReportRef}
           />
         </section>
       </main>
@@ -428,6 +467,49 @@ export default function App() {
               </div>
 
               <div className="space-y-3.5 text-[11px] leading-relaxed overflow-y-auto max-h-[60vh] pr-2 custom-scrollbar text-[#888]">
+                {/* Official VSC Target Sample Presets */}
+                <div className="bg-[#0E0F11] p-3 rounded border border-[#2A2B2E] space-y-2">
+                  <h4 className="font-bold text-[#E4E3E0] uppercase tracking-wide text-[10px] text-[#F27D26]">
+                    {translations[language].officialVscTargets}
+                  </h4>
+                  <div className="grid grid-cols-3 gap-2">
+                    {presets.map((preset, idx) => {
+                      const label = String.fromCharCode(65 + idx);
+                      let presetName = preset.name;
+                      let presetDesc = preset.description;
+                      if (preset.id === 'target-10-touch') {
+                        presetName = translations[language].preset1Name;
+                        presetDesc = translations[language].preset1Desc;
+                      } else if (preset.id === 'target-10-miss') {
+                        presetName = translations[language].preset2Name;
+                        presetDesc = translations[language].preset2Desc;
+                      } else if (preset.id === 'target-10-torn') {
+                        presetName = translations[language].preset3Name;
+                        presetDesc = translations[language].preset3Desc;
+                      }
+
+                      return (
+                        <button
+                          key={preset.id}
+                          onClick={() => {
+                            setShowRulesModal(false);
+                            handlePresetSelected(preset);
+                          }}
+                          className="w-full bg-[#151619] border border-[#333] hover:border-[#F27D26]/60 hover:bg-[#202125] text-[#E4E3E0] hover:text-white rounded py-2 px-1 font-mono text-center flex flex-col items-center justify-center cursor-pointer transition-all group"
+                          title={`${presetName}: ${presetDesc}`}
+                        >
+                          <span className="text-[14px] font-bold text-white group-hover:text-[#F27D26] block">
+                            {label}
+                          </span>
+                          <span className="text-[7px] text-[#666] uppercase font-semibold mt-0.5 tracking-tighter">
+                            {preset.expectedResult === 'HIGHER SCORE' ? (language === 'vi' ? 'ĐIỂM CAO' : 'HIGHER') : (language === 'vi' ? 'ĐIỂM THẤP' : 'LOWER')}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 <div className="bg-[#0E0F11] p-3 rounded border border-[#2A2B2E]">
                   <h4 className="font-bold text-[#E4E3E0] mb-1 uppercase tracking-wide text-[10px] text-[#F27D26]">
                     {translations[language].clause1Title}
@@ -482,6 +564,117 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Preset Target Preview Modal */}
+      {activePresetForPreview && (() => {
+        let presetName = activePresetForPreview.name;
+        let presetDesc = activePresetForPreview.description;
+        let presetReason = activePresetForPreview.reason;
+
+        if (activePresetForPreview.id === 'target-10-touch') {
+          presetName = translations[language].preset1Name;
+          presetDesc = translations[language].preset1Desc;
+          presetReason = translations[language].preset1Reason;
+        } else if (activePresetForPreview.id === 'target-10-miss') {
+          presetName = translations[language].preset2Name;
+          presetDesc = translations[language].preset2Desc;
+          presetReason = translations[language].preset2Reason;
+        } else if (activePresetForPreview.id === 'target-10-torn') {
+          presetName = translations[language].preset3Name;
+          presetDesc = translations[language].preset3Desc;
+          presetReason = translations[language].preset3Reason;
+        }
+
+        const t = modalTranslations[language];
+
+        return (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4" id="vsc-preset-preview-modal">
+            <div className="bg-[#151619] border border-[#333] rounded w-full max-w-lg p-5 shadow-2xl text-[#E4E3E0] flex flex-col justify-between max-h-[95vh] font-mono">
+              <div>
+                <div className="flex items-center justify-between mb-4 pb-2.5 border-b border-[#333]">
+                  <div className="flex items-center space-x-2">
+                    <Target className="w-4 h-4 text-[#F27D26]" />
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-white">
+                      {t.modalTitle}
+                    </h3>
+                  </div>
+                  <button
+                    onClick={() => setActivePresetForPreview(null)}
+                    className="p-1 hover:bg-[#2A2B2E] hover:text-white rounded text-[#666] transition-colors cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="space-y-4 text-[11px] leading-relaxed overflow-y-auto max-h-[70vh] pr-2 custom-scrollbar">
+                  {/* Generated Target Image */}
+                  <div className="flex justify-center bg-[#0E0F11] p-3 rounded border border-[#2A2B2E] relative overflow-hidden">
+                    <img
+                      src={activePresetForPreview.generateUrl()}
+                      alt={presetName}
+                      className="w-56 h-56 object-contain border border-[#333] rounded bg-black shadow-inner"
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+
+                  <div className="bg-[#0E0F11] p-3 rounded border border-[#2A2B2E]">
+                    <h4 className="font-bold text-[#E4E3E0] mb-1.5 uppercase tracking-wide text-[10px]">
+                      {presetName}
+                    </h4>
+                    <p className="text-[#888]">
+                      {presetDesc}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-[#0E0F11] p-3 rounded border border-[#2A2B2E]">
+                      <span className="text-[9px] font-bold text-[#666] uppercase block mb-1">{t.expectedResult}</span>
+                      <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded border uppercase ${
+                        activePresetForPreview.expectedResult === 'HIGHER SCORE'
+                          ? 'bg-green-950/40 border-green-900/50 text-green-400'
+                          : 'bg-red-950/40 border-red-900/50 text-red-400'
+                      }`}>
+                        {activePresetForPreview.expectedResult === 'HIGHER SCORE' ? translations[language].resolvedHigher : translations[language].resolvedLower}
+                      </span>
+                    </div>
+
+                    <div className="bg-[#0E0F11] p-3 rounded border border-[#2A2B2E]">
+                      <span className="text-[9px] font-bold text-[#666] uppercase block mb-1">{t.standardScale}</span>
+                      <span className="text-[10px] text-blue-400 font-bold block mt-0.5">
+                        {activePresetForPreview.pixelsPerMm} px/mm
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="bg-[#0E0F11] p-3 rounded border border-[#2A2B2E]">
+                    <h4 className="font-bold text-[#F27D26] mb-1 uppercase tracking-wide text-[10px]">
+                      {t.reasoning}
+                    </h4>
+                    <p className="text-[#888]">
+                      {presetReason}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5 border-t border-[#333] pt-3.5 flex justify-end space-x-2">
+                <button
+                  onClick={() => handleLoadPreset(activePresetForPreview)}
+                  className="bg-[#F27D26] hover:bg-[#F27D26]/90 text-black border border-transparent text-[10px] font-bold py-2 px-4 rounded-sm transition-all uppercase tracking-wider cursor-pointer"
+                >
+                  {language === 'vi' ? 'SỬ DỤNG BIA NÀY' : 'USE THIS TARGET'}
+                </button>
+                <button
+                  onClick={() => setActivePresetForPreview(null)}
+                  className="bg-[#2A2B2E] hover:bg-[#333] text-[#E4E3E0] hover:text-white border border-[#444] text-[10px] font-bold py-2 px-4 rounded-sm transition-all uppercase tracking-wider cursor-pointer"
+                >
+                  {t.closeBtn}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

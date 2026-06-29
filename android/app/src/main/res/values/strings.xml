@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">VSC VAR Check</string>
+    <string name="title_activity_main">VSC VAR Check</string>
+    <string name="package_name">com.vscvietnamslingshot.varcheck</string>
+    <string name="custom_url_scheme">com.vscvietnamslingshot.varcheck</string>
+</resources>
